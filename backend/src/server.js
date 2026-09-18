@@ -50,7 +50,7 @@ app.delete('/api/expenses/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ message: 'Failed to delete expense' }); }
 });
 
-const PORT = process.env.PORT || 4100;
+const PORT = process.env.PORT || 4500;
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => app.listen(PORT, () => console.log(`API running on port ${PORT}`)))
   .catch(error => { console.error('MongoDB connection failed:', error.message); process.exit(1); });
