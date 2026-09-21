@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import './style.css';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:4600/api';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:4500/api';
 const categories = ['Food','Transport','Bills','Shopping','Health','Entertainment','Education','Other'];
 const money = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
