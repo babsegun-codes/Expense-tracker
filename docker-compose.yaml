@@ -1,0 +1,38 @@
+services:
+  mongo:
+    image: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME:  mongodb
+      MONGO_INITDB_ROOT_PASSWORD: mongopassword
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+
+    ports:
+      - "4500:4500"
+    depends_on:
+      - mongo
+
+    environment:
+      MONGODB_URI: mongodb://mongodb:mongopassword@mongo:27017/expense_tracker?authSource=admin
+
+
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "801:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:

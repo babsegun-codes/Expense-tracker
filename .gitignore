@@ -12,4 +12,3 @@ env*
 .vercel
 .env.example
 .env.*.local
-
