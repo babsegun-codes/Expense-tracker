@@ -12,3 +12,75 @@ env*
 .vercel
 .env.example
 .env.*.local
+
+# Build output
+dist/
+build/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Kubernetes secrets
+Kubernetes/*secret*.yaml
+Kubernetes/*secret*.yml
+
+# Archives and downloaded binaries
+*.tar.gz
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+
+# Build output
+dist/
+build/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Kubernetes secrets
+Kubernetes/*secret*.yaml
+Kubernetes/*secret*.yml
+
+# Archives and downloaded binaries
+*.tar.gz
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/

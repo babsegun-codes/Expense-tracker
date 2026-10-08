@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  namespace: expense-tracker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: expense-tracker-frontend
+  template:
+    metadata:
+      labels:
+        app: expense-tracker-frontend
+    spec:
+      containers:
+      - name: expense-tracker-frontend
+        image: samakn/expense-tracker:frontend-V2
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
