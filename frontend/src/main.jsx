@@ -75,6 +75,50 @@ function dateInputValue(value) {
   return Number.isNaN(date.getTime()) ? today() : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function localGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function displayName(email = '') {
+  const localPart = email.split('@')[0] || 'there';
+  const firstName = localPart.split(/[._+-]/).filter(Boolean)[0] || 'there';
+  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+}
+
+function SetupGuide({ expensesCount, onAddExpense, onDismiss, onShow, dismissed }) {
+  const expenseAdded = expensesCount > 0;
+  const progress = expenseAdded ? 1 : 0;
+  if (dismissed) return (
+    <div className="setup-reminder">
+      <span><Check size={15}/> Setup guide <strong>{progress} of 3 steps</strong></span>
+      <button className="text-action" onClick={onShow}>Continue setup <span aria-hidden="true">→</span></button>
+    </div>
+  );
+
+  return (
+    <section className="setup-guide" aria-labelledby="setup-title">
+      <div className="setup-heading">
+        <div>
+          <p className="eyebrow">YOUR FIRST STEPS</p>
+          <h2 id="setup-title">Build a clearer picture of your money</h2>
+          <p>Start with an expense. Account tracking and financial goals are on our roadmap.</p>
+        </div>
+        <button className="icon-control setup-dismiss" onClick={onDismiss} aria-label="Dismiss setup guide" title="Dismiss setup guide"><X size={18}/></button>
+      </div>
+      <div className="setup-progress" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="3" aria-valuenow={progress}><span style={{ width: `${progress / 3 * 100}%` }}/></div>
+      <p className="setup-progress-label">{progress} of 3 steps complete</p>
+      <ol className="setup-steps">
+        <li className="setup-step unavailable"><span className="setup-step-icon"><Landmark size={17}/></span><span><strong>Add a financial account</strong><small>Bank, cash and savings accounts · Coming later</small></span><span className="soon-pill">COMING LATER</span></li>
+        <li className={`setup-step ${expenseAdded ? 'complete' : 'current'}`}><span className="setup-step-icon">{expenseAdded ? <Check size={17}/> : <ReceiptText size={17}/>}</span><span><strong>{expenseAdded ? 'Record your first expense' : 'Add your first expense'}</strong><small>{expenseAdded ? 'Your first expense is saved to your account.' : 'See your spending summary and recent activity.'}</small></span>{!expenseAdded && <button className="button button-primary setup-action" onClick={onAddExpense}><Plus size={15}/>Add expense</button>}</li>
+        <li className="setup-step unavailable"><span className="setup-step-icon"><Sparkles size={17}/></span><span><strong>Set a financial goal</strong><small>Plan for what matters to you · Coming later</small></span><span className="soon-pill">COMING LATER</span></li>
+      </ol>
+    </section>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('expense-tracker-token') || '');
   const [user, setUser] = useState(null);
@@ -99,6 +143,9 @@ function App() {
   const [activeSection, setActiveSection] = useState('overview');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [newUserSession, setNewUserSession] = useState(false);
+  const [setupManuallyOpened, setSetupManuallyOpened] = useState(false);
   const formDialog = useRef(null);
   const deleteDialog = useRef(null);
   const toastTimer = useRef(null);
@@ -111,7 +158,26 @@ function App() {
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
+  useEffect(() => {
+    setOnboardingDismissed(user?.id ? localStorage.getItem(`expense-tracker-setup-dismissed:${user.id}`) === 'true' : false);
+    setNewUserSession(user?.id ? localStorage.getItem(`expense-tracker-new-user:${user.id}`) === 'true' : false);
+    setSetupManuallyOpened(false);
+  }, [user?.id]);
+
+  function dismissSetup() {
+    if (user?.id) localStorage.setItem(`expense-tracker-setup-dismissed:${user.id}`, 'true');
+    setOnboardingDismissed(true);
+    setSetupManuallyOpened(false);
+  }
+
+  function showSetup() {
+    if (user?.id) localStorage.removeItem(`expense-tracker-setup-dismissed:${user.id}`);
+    setOnboardingDismissed(false);
+    setSetupManuallyOpened(true);
+  }
+
   function clearSession() {
+    if (user?.id) localStorage.removeItem(`expense-tracker-new-user:${user.id}`);
     localStorage.removeItem('expense-tracker-token');
     setToken('');
     setUser(null);
@@ -149,6 +215,7 @@ function App() {
         const result = await apiRequest('/auth/me', token);
         if (!active) return;
         setUser(result.user);
+        setNewUserSession(localStorage.getItem(`expense-tracker-new-user:${result.user.id}`) === 'true');
         await loadExpenses(token);
       } catch (error) {
         if (!active) return;
@@ -178,6 +245,10 @@ function App() {
       localStorage.setItem('expense-tracker-token', result.token);
       setToken(result.token);
       setUser(result.user);
+      const isNewRegistration = authMode === 'register';
+      if (isNewRegistration) localStorage.setItem(`expense-tracker-new-user:${result.user.id}`, 'true');
+      else localStorage.removeItem(`expense-tracker-new-user:${result.user.id}`);
+      setNewUserSession(isNewRegistration);
       setAuthForm({ email: '', password: '' });
       const loaded = await loadExpenses(result.token);
       if (loaded) notify(authMode === 'login' ? 'Welcome back.' : 'Your account is ready.');
@@ -319,6 +390,8 @@ function App() {
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [expenses]);
   const recentExpenses = [...expenses].slice(0, 5);
+  const welcomeStage = expenses.length === 0 ? 'new' : expenses.length < 4 ? 'starting' : 'established';
+  const setupExpanded = setupManuallyOpened || (!onboardingDismissed && (welcomeStage === 'new' || (welcomeStage === 'starting' && newUserSession)));
 
   function setSection(section) {
     setActiveSection(section);
@@ -395,8 +468,8 @@ function App() {
           <header className="page-header">
             <div className="header-title">
               <p className="eyebrow">YOUR MONEY, IN FOCUS</p>
-              <h1>Overview</h1>
-              <p>Here’s what’s happening with your expenses.</p>
+              <h1>{localGreeting()}, {displayName(user.email)}</h1>
+              <p>{welcomeStage === 'new' ? 'Your financial dashboard starts here.' : welcomeStage === 'starting' ? 'You’re building a clearer view of your spending.' : 'Here’s what’s happening with your expenses.'}</p>
             </div>
             <div className="header-actions">
               <span className="date-context"><CalendarDays size={16}/>{new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium' }).format(new Date())}</span>
@@ -406,19 +479,10 @@ function App() {
 
           {loadError && expenses.length === 0 && <div className="inline-alert" role="alert"><span>{loadError}</span><button className="button button-quiet" onClick={() => loadExpenses()}><RefreshCw size={15}/>Try again</button></div>}
 
-          {loading ? <DashboardSkeleton/> : expenses.length === 0 ? (
-            <div className="empty-dashboard" id="transactions">
-              <div className="empty-copy">
-                <span className="empty-icon"><Sparkles size={23}/></span>
-                <p className="eyebrow">A FRESH START</p>
-                <h2>Your financial dashboard starts here.</h2>
-                <p>Add your first expense to see your spending overview and recent activity in one place.</p>
-                <button className="button button-primary" onClick={openNewExpense}><Plus size={17}/>Add your first expense</button>
-              </div>
-              <div className="empty-illustration" aria-hidden="true"><div className="empty-ring ring-one"/><div className="empty-ring ring-two"/><div className="empty-card"><span/><span/><span/></div><div className="empty-dot dot-one"/><div className="empty-dot dot-two"/></div>
-            </div>
-          ) : (
+          {loading ? <DashboardSkeleton/> : (
             <>
+              <SetupGuide expensesCount={expenses.length} onAddExpense={openNewExpense} onDismiss={dismissSetup} onShow={showSetup} dismissed={!setupExpanded}/>
+              {expenses.length > 0 && <>
               <section className="summary-grid" aria-label="Expense summary">
                 <SummaryCard icon={Wallet} label="Total expenses" value={money.format(total)} hint="Across all recorded expenses" tone="navy"/>
                 <SummaryCard icon={CalendarDays} label="This month" value={money.format(monthTotal)} hint="Spending recorded this month" tone="teal"/>
@@ -490,6 +554,7 @@ function App() {
                   <div className="transaction-list">{filtered.map(expense => <ExpenseRow key={expense._id} expense={expense} onEdit={startEdit} onDelete={setDeletingExpense}/>)}</div>}
               </section>
 
+              </>}
             </>
           )}
           <details className={`legacy-details ${legacyOpen ? 'is-open' : ''}`} open={legacyOpen} onToggle={event => setLegacyOpen(event.currentTarget.open)}>
