@@ -118,8 +118,8 @@ function App() {
     <div className="page">
       <header>
         <div>
-          <p className="eyebrow">PERSON FINANCE</p>
-          <h1>Expense Tracker V2</h1>
+          <p className="eyebrow">PERSONAL FINANCE</p>
+          <h1>Expense Tracker</h1>
           <p className="sub">Track, search and manage your spending in one place.</p>
         </div>
         <div className="badge">● Connected workspace</div>
