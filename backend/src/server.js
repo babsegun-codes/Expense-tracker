@@ -1,74 +1,35 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
 const mongoose = require('mongoose');
+const app = require('./app');
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+async function start(options = {}) {
+  const uri = options.uri || process.env.MONGODB_URI;
+  const secret = process.env.JWT_SECRET;
+  const port = options.port === undefined ? (process.env.PORT || 4500) : options.port;
+  const connect = options.connect || mongoose.connect.bind(mongoose);
 
-const expenseSchema = new mongoose.Schema({
-  title: { type: String, required: true, trim: true, maxlength: 100 },
-  amount: { type: Number, required: true, min: 0.01 },
-  category: { type: String, required: true, trim: true, maxlength: 50 },
-  date: { type: Date, required: true },
-  description: { type: String, trim: true, maxlength: 500, default: '' }
-}, { timestamps: true });
+  if (!uri) throw new Error('MONGODB_URI is not set.');
+  if (!secret || secret.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters.');
 
-const Expense = mongoose.model('Expense', expenseSchema);
-
-app.get('/', (req, res) => res.json({ message: 'Expense Tracker API is running' }));
-app.get('/health', (req, res) => res.json({ status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }));
-
-app.get('/api/expenses', async (req, res) => {
   try {
-    const expenses = await Expense.find().sort({ date: -1, createdAt: -1 });
-    res.json(expenses);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch expenses' });
+    await connect(uri);
+  } catch {
+    throw new Error('MongoDB connection failed. Check backend configuration and database availability.');
   }
-});
 
-app.post('/api/expenses', async (req, res) => {
-  try {
-    const expense = await Expense.create(req.body);
-    res.status(201).json(expense);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-app.put('/api/expenses/:id', async (req, res) => {
-  try {
-    const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!expense) return res.status(404).json({ message: 'Expense not found' });
-    res.json(expense);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-app.delete('/api/expenses/:id', async (req, res) => {
-  try {
-    const expense = await Expense.findByIdAndDelete(req.params.id);
-    if (!expense) return res.status(404).json({ message: 'Expense not found' });
-    res.json({ message: 'Expense deleted successfully' });
-  } catch (error) {
-    res.status(400).json({ message: 'Invalid expense ID' });
-  }
-});
-
-const PORT = process.env.PORT || 4500;
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  console.error('MONGODB_URI is not set. Configure the backend environment before starting the API.');
-  process.exit(1);
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => resolve(server));
+    server.once('error', reject);
+  });
 }
 
-mongoose.connect(MONGODB_URI)
-  .then(() => app.listen(PORT, () => console.log(`API running on port ${PORT}`)))
-  .catch(error => {
-    console.error('MongoDB connection failed:', error.message);
-    process.exit(1);
-  });
+if (require.main === module) {
+  start()
+    .then(() => console.log('Expense Tracker API is running.'))
+    .catch(error => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
+}
+
+module.exports = { app, start };
