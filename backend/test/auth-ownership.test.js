@@ -8,6 +8,8 @@ process.env.JWT_SECRET = 'test-only-secret-that-is-long-enough-32-chars';
 const { start } = require('../src/server');
 const User = require('../src/models/User');
 const Expense = require('../src/models/Expense');
+const FinancialAccount = require('../src/models/FinancialAccount');
+const FinancialTransaction = require('../src/models/FinancialTransaction');
 
 const users = new Map();
 const expenses = new Map();
@@ -19,6 +21,10 @@ function makeId() {
 }
 
 function installModelFakes() {
+  FinancialAccount.findOneAndUpdate = async filter => ({ _id: new mongoose.Types.ObjectId(), ...filter, currency: 'NGN', openingBalanceMinor: 0 });
+  FinancialTransaction.create = async fields => ({ _id: makeId(), ...fields });
+  FinancialTransaction.updateOne = async () => ({ modifiedCount: 1 });
+  FinancialTransaction.deleteOne = async () => ({ deletedCount: 1 });
   User.create = async ({ email, passwordHash }) => {
     if ([...users.values()].some(user => user.email === email)) {
       const error = new Error('duplicate key');
@@ -151,6 +157,27 @@ test('multi-user authentication and expense ownership', async t => {
     assert.equal((await request('/api/expenses', { method: 'POST', body: {} })).status, 401);
     assert.equal((await request('/api/expenses/000000000000000000000001', { method: 'PUT', body: {} })).status, 401);
     assert.equal((await request('/api/expenses/000000000000000000000001', { method: 'DELETE' })).status, 401);
+  });
+
+  await t.test('finance and provider routes require the authenticated owner', async () => {
+    assert.equal((await request('/api/finance/accounts')).status, 401);
+    assert.equal((await request('/api/finance/transactions')).status, 401);
+    assert.equal((await request('/api/finance/transfers', { method: 'POST', body: {} })).status, 401);
+    const priorKey = process.env.MONO_SECRET_KEY;
+    delete process.env.MONO_SECRET_KEY;
+    const unavailable = await request('/api/bank/connect', { method: 'POST', token: aliceToken, body: {} });
+    assert.equal(unavailable.status, 503);
+    if (priorKey !== undefined) process.env.MONO_SECRET_KEY = priorKey;
+    const webhook = await fetch(baseUrl + '/api/bank/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'mono.events.account_updated' }) });
+    assert.equal(webhook.status, 401);
+  });
+
+  await t.test('transfer validation rejects source and destination equality before writing', async () => {
+    const result = await request('/api/finance/transfers', {
+      method: 'POST', token: aliceToken,
+      body: { sourceAccountId: '000000000000000000000001', destinationAccountId: '000000000000000000000001', amount: 100, date: '2026-10-09' }
+    });
+    assert.equal(result.status, 400);
   });
 
   await t.test('owner can create and retrieve expenses; client cannot spoof ownership', async () => {

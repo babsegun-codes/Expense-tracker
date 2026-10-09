@@ -40,6 +40,20 @@ async function apiRequest(path, token, options = {}) {
   return data;
 }
 
+function parseCsvRow(line) {
+  const columns = []; let value = ''; let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' && quoted && line[i + 1] === '"') { value += '"'; i++; }
+    else if (char === '"') quoted = !quoted;
+    else if (char === ',' && !quoted) { columns.push(value.trim()); value = ''; }
+    else value += char;
+  }
+  if (quoted) throw new Error('A CSV row contains an unclosed quoted field.');
+  columns.push(value.trim());
+  return columns;
+}
+
 function displayError(error, action = 'complete this action') {
   if (error.status === 400) return 'Please check the information and try again.';
   if (error.status === 401) return 'Your session has expired. Please sign in again.';
@@ -104,14 +118,14 @@ function SetupGuide({ expensesCount, onAddExpense, onDismiss, onShow, dismissed 
         <div>
           <p className="eyebrow">YOUR FIRST STEPS</p>
           <h2 id="setup-title">Build a clearer picture of your money</h2>
-          <p>Start with an expense. Account tracking and financial goals are on our roadmap.</p>
+          <p>Add accounts, record income and expenses, and track transfers in one private place.</p>
         </div>
         <button className="icon-control setup-dismiss" onClick={onDismiss} aria-label="Dismiss setup guide" title="Dismiss setup guide"><X size={18}/></button>
       </div>
       <div className="setup-progress" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="3" aria-valuenow={progress}><span style={{ width: `${progress / 3 * 100}%` }}/></div>
       <p className="setup-progress-label">{progress} of 3 steps complete</p>
       <ol className="setup-steps">
-        <li className="setup-step unavailable"><span className="setup-step-icon"><Landmark size={17}/></span><span><strong>Add a financial account</strong><small>Bank, cash and savings accounts · Coming later</small></span><span className="soon-pill">COMING LATER</span></li>
+        <li className="setup-step current"><span className="setup-step-icon"><Landmark size={17}/></span><span><strong>Add a financial account</strong><small>Bank, cash, savings or mobile money.</small></span></li>
         <li className={`setup-step ${expenseAdded ? 'complete' : 'current'}`}><span className="setup-step-icon">{expenseAdded ? <Check size={17}/> : <ReceiptText size={17}/>}</span><span><strong>{expenseAdded ? 'Record your first expense' : 'Add your first expense'}</strong><small>{expenseAdded ? 'Your first expense is saved to your account.' : 'See your spending summary and recent activity.'}</small></span>{!expenseAdded && <button className="button button-primary setup-action" onClick={onAddExpense}><Plus size={15}/>Add expense</button>}</li>
         <li className="setup-step unavailable"><span className="setup-step-icon"><Sparkles size={17}/></span><span><strong>Set a financial goal</strong><small>Plan for what matters to you · Coming later</small></span><span className="soon-pill">COMING LATER</span></li>
       </ol>
@@ -396,7 +410,7 @@ function App() {
   function setSection(section) {
     setActiveSection(section);
     setMobileNavOpen(false);
-    document.getElementById(section === 'overview' ? 'overview' : 'transactions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(section === 'overview' ? 'overview' : section === 'accounts' ? 'finance-workspace' : 'transactions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function clearFilters() {
@@ -437,8 +451,8 @@ function App() {
           <button className={activeSection === 'transactions' ? 'active' : ''} aria-current={activeSection === 'transactions' ? 'page' : undefined} onClick={() => setSection('transactions')}>
             <ReceiptText size={18}/><span>Transactions</span>{expenses.length > 0 && <span className="nav-count">{expenses.length}</span>}
           </button>
-          <button className="disabled-nav" disabled aria-disabled="true" title="Account management is not available yet">
-            <Landmark size={18}/><span>Accounts</span><span className="soon-label">SOON</span>
+          <button className={activeSection === 'accounts' ? 'active' : ''} aria-current={activeSection === 'accounts' ? 'page' : undefined} onClick={() => setSection('accounts')}>
+            <Landmark size={18}/><span>Accounts</span>
           </button>
         </nav>
 
@@ -513,14 +527,14 @@ function App() {
 
                 <div className="surface account-preview">
                   <div className="section-heading">
-                    <div><p className="eyebrow">ACCOUNTS</p><h2>One step at a time</h2></div>
-                    <span className="soon-pill">COMING LATER</span>
+                    <div><p className="eyebrow">ACCOUNTS</p><h2>Your money, together</h2></div>
+                    <button className="text-action" onClick={() => setSection('accounts')}>Manage accounts →</button>
                   </div>
                   <div className="account-preview-body">
                     <span className="account-preview-icon"><Landmark size={21}/></span>
-                    <div><strong>Account tracking isn’t available yet</strong><p>Expenses are currently tracked together, without separate bank, cash or savings accounts.</p></div>
+                    <div><strong>Track balances and move between accounts</strong><p>Set opening balances, record income and expenses, and keep transfers out of spending totals.</p></div>
                   </div>
-                  <div className="account-preview-foot"><ShieldCheck size={15}/>Your saved expenses are still private to your account.</div>
+                  <div className="account-preview-foot"><ShieldCheck size={15}/>Transfers are records only; the app does not move money.</div>
                 </div>
               </section>
 
@@ -555,6 +569,7 @@ function App() {
               </section>
 
               </>}
+              <FinanceWorkspace token={token} onNotify={notify}/>
             </>
           )}
           <details className={`legacy-details ${legacyOpen ? 'is-open' : ''}`} open={legacyOpen} onToggle={event => setLegacyOpen(event.currentTarget.open)}>
@@ -592,6 +607,176 @@ function App() {
       {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)}/>}
     </div>
   );
+}
+
+function FinanceWorkspace({ token, onNotify }) {
+  const [accounts, setAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [recurring, setRecurring] = useState([]);
+  const [reconciliation, setReconciliation] = useState([]);
+  const [transferSuggestions, setTransferSuggestions] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [accountForm, setAccountForm] = useState({ name: '', type: 'bank', openingBalance: '' });
+  const [transactionForm, setTransactionForm] = useState({ accountId: '', type: 'expense', amount: '', description: '', category: 'Food', date: today() });
+  const [transferForm, setTransferForm] = useState({ sourceAccountId: '', destinationAccountId: '', amount: '', description: 'Transfer', date: today(), reference: '', fee: '' });
+  const [budgetForm, setBudgetForm] = useState({ category: 'Food', month: today().slice(0, 7), amount: '' });
+  const [recurringForm, setRecurringForm] = useState({ accountId: '', type: 'expense', amount: '', description: '', category: 'Bills', frequency: 'monthly', nextDate: today() });
+  const [importItems, setImportItems] = useState(null);
+  const [editingTransactionId, setEditingTransactionId] = useState(null);
+  const [editingTransferId, setEditingTransferId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const transferIdempotencyKey = useRef(crypto.randomUUID());
+
+  async function refresh() {
+    try {
+      const [nextAccounts, nextTransactions, nextBudgets, nextSummary, nextRecurring, nextReconciliation, nextSuggestions] = await Promise.all([
+        apiRequest('/finance/accounts', token),
+        apiRequest('/finance/transactions?limit=12', token),
+        apiRequest('/finance/budgets?month=' + today().slice(0, 7), token),
+        apiRequest('/finance/summary?month=' + today().slice(0, 7), token),
+        apiRequest('/finance/recurring', token),
+        apiRequest('/finance/reconciliation/balances', token),
+        apiRequest('/finance/reconciliation/suggestions', token)
+      ]);
+      setAccounts(nextAccounts); setTransactions(nextTransactions.items); setBudgets(nextBudgets); setSummary(nextSummary); setRecurring(nextRecurring);
+      setReconciliation(nextReconciliation);
+      setTransferSuggestions(nextSuggestions);
+      setTransactionForm(current => ({ ...current, accountId: current.accountId || nextAccounts[0]?._id || '' }));
+      setTransferForm(current => ({ ...current, sourceAccountId: current.sourceAccountId || nextAccounts[0]?._id || '', destinationAccountId: current.destinationAccountId || nextAccounts[1]?._id || '' }));
+      setRecurringForm(current => ({ ...current, accountId: current.accountId || nextAccounts[0]?._id || '' }));
+    } catch (error) { setMessage(error.message); }
+  }
+
+  useEffect(() => { refresh(); }, [token]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code'); const ref = params.get('ref');
+    if (!code) return;
+    params.delete('code'); params.delete('ref'); window.history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`);
+    apiRequest(`/bank/callback?code=${encodeURIComponent(code)}&ref=${encodeURIComponent(ref || '')}`, token, { method: 'GET' })
+      .then(result => { onNotify(`Bank account linked. ${result.sync?.imported || 0} new transactions imported (${result.environment}).`); refresh(); })
+      .catch(error => onNotify(error.message, 'error'));
+  }, [token]);
+
+  async function run(action) {
+    setBusy(true); setMessage('');
+    try { await action(); await refresh(); }
+    catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  }
+  async function addAccount(event) {
+    event.preventDefault();
+    await run(async () => { await apiRequest('/finance/accounts', token, { method: 'POST', body: JSON.stringify(accountForm) }); setAccountForm({ name: '', type: 'bank', openingBalance: '' }); onNotify('Account added.'); });
+  }
+  async function addTransaction(event) {
+    event.preventDefault();
+    await run(async () => { await apiRequest(editingTransactionId ? `/finance/transactions/${editingTransactionId}` : '/finance/transactions', token, { method: editingTransactionId ? 'PUT' : 'POST', body: JSON.stringify(transactionForm) }); setEditingTransactionId(null); setTransactionForm(current => ({ ...current, amount: '', description: '' })); onNotify(editingTransactionId ? 'Transaction updated.' : 'Transaction recorded.'); });
+  }
+  async function addTransfer(event) {
+    event.preventDefault();
+    await run(async () => { const result = await apiRequest(editingTransferId ? `/finance/transfers/${editingTransferId}` : '/finance/transfers', token, { method: editingTransferId ? 'PUT' : 'POST', headers: editingTransferId ? {} : { 'Idempotency-Key': transferIdempotencyKey.current }, body: JSON.stringify(transferForm) }); if (!editingTransferId) transferIdempotencyKey.current = crypto.randomUUID(); setEditingTransferId(null); onNotify(result.message || 'Transfer updated.'); setTransferForm(current => ({ ...current, amount: '', reference: '', fee: '' })); });
+  }
+  function editTransaction(item) {
+    setEditingTransactionId(item._id);
+    setTransactionForm({ accountId: item.accountId, type: item.type, amount: String(item.amountMinor / 100), description: item.description, category: item.category || 'Other', date: dateInputValue(item.date) });
+    document.getElementById('finance-title')?.scrollIntoView({ behavior: 'smooth' });
+  }
+  function editTransfer(item) {
+    setEditingTransferId(item._id);
+    setTransferForm({ sourceAccountId: item.accountId, destinationAccountId: item.transferToAccountId, amount: String(item.amountMinor / 100), description: item.description, date: dateInputValue(item.date), reference: item.reference || '', fee: '' });
+    document.getElementById('finance-title')?.scrollIntoView({ behavior: 'smooth' });
+  }
+  async function transactionAction(item, action) {
+    await run(async () => { await apiRequest(`/finance/transactions/${item._id}/${action}`, token, { method: 'POST', body: '{}' }); onNotify(action === 'reverse' ? 'Reversal recorded.' : 'Transaction cancelled.'); });
+  }
+  async function connectBank() {
+    await run(async () => { const result = await apiRequest('/bank/connect', token, { method: 'POST', body: '{}' }); window.location.assign(result.url); });
+  }
+  async function syncAccount(account) {
+    await run(async () => { const result = await apiRequest(`/bank/sync/${account._id}`, token, { method: 'POST', body: '{}' }); onNotify(result.message); });
+  }
+  async function disconnectAccount(account) {
+    await run(async () => { await apiRequest(`/bank/disconnect/${account._id}`, token, { method: 'DELETE' }); onNotify('Bank connection disconnected. Imported history remains.'); });
+  }
+  async function renameAccount(account) {
+    const name = window.prompt('Account name', account.name);
+    if (!name || name.trim() === account.name) return;
+    await run(async () => { await apiRequest(`/finance/accounts/${account._id}`, token, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) }); onNotify('Account renamed.'); });
+  }
+  async function removeAccount(account) {
+    if (!window.confirm(`Remove ${account.name}? Accounts with transaction history must remain for accurate balances.`)) return;
+    await run(async () => { await apiRequest(`/finance/accounts/${account._id}`, token, { method: 'DELETE' }); onNotify('Account removed.'); });
+  }
+  async function saveBudget(event) {
+    event.preventDefault();
+    await run(async () => { await apiRequest('/finance/budgets', token, { method: 'POST', body: JSON.stringify(budgetForm) }); setBudgetForm(current => ({ ...current, amount: '' })); onNotify('Budget saved.'); });
+  }
+  async function saveRecurring(event) {
+    event.preventDefault();
+    await run(async () => { await apiRequest('/finance/recurring', token, { method: 'POST', body: JSON.stringify(recurringForm) }); setRecurringForm(current => ({ ...current, amount: '', description: '' })); onNotify('Recurring schedule saved.'); });
+  }
+  async function postRecurring(item) {
+    await run(async () => { const result = await apiRequest(`/finance/recurring/${item._id}/post`, token, { method: 'POST', body: '{}' }); onNotify(`Recurring entry recorded. Next date: ${localDate(result.nextDate)}.`); });
+  }
+  async function matchTransfer(item) {
+    await run(async () => { await apiRequest('/finance/reconciliation/match', token, { method: 'POST', body: JSON.stringify({ debitId: item.debitId, creditId: item.creditId }) }); onNotify('Transactions matched and recorded as a transfer.'); });
+  }
+  async function previewImport(event) {
+    const file = event.target.files?.[0]; event.target.value = '';
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv') || file.size > 1024 * 1024) { setMessage('Choose a CSV file smaller than 1 MB. PDF, Excel and image files are not supported for statement imports.'); return; }
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const headers = parseCsvRow(lines.shift()).map(x => x.toLowerCase());
+      const index = name => headers.indexOf(name);
+      if (index('date') < 0 || index('amount') < 0 || index('description') < 0) throw new Error('CSV must include date, amount and description columns.');
+      const rows = lines.map(line => {
+        const cols = parseCsvRow(line);
+        const amount = Number(cols[index('amount')]);
+        return { date: cols[index('date')], amount: Math.abs(amount), type: cols[index('type')] || (amount < 0 ? 'expense' : 'income'), description: cols[index('description')], category: index('category') >= 0 ? cols[index('category')] : 'Other', reference: index('reference') >= 0 ? cols[index('reference')] : '' };
+      });
+      const result = await apiRequest('/finance/imports/preview', token, { method: 'POST', body: JSON.stringify({ accountId: transactionForm.accountId || accounts[0]?._id, rows }) });
+      setImportItems(result.items); setMessage(`Review ${result.accepted} new row(s); ${result.duplicates} possible duplicate(s) are preselected to skip.`);
+    } catch (error) { setMessage(error.message); }
+  }
+  async function commitImport() {
+    await run(async () => { const result = await apiRequest('/finance/imports/commit', token, { method: 'POST', body: JSON.stringify({ items: importItems.filter(item => !item.duplicate) }) }); setImportItems(null); onNotify(`${result.imported} transactions imported.`); });
+  }
+  async function attachReceipt(event, transactionId) {
+    const file = event.target.files?.[0]; event.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) { setMessage('Receipt must be a JPG, PNG, WebP or PDF smaller than 2 MB.'); return; }
+    const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
+    await run(async () => { await apiRequest(`/finance/transactions/${transactionId}/receipt`, token, { method: 'POST', body: JSON.stringify({ filename: file.name, mimeType: file.type, data }) }); onNotify('Receipt attached securely.'); });
+  }
+
+  return <section className="surface finance-workspace" id="finance-workspace" aria-labelledby="finance-title">
+    <div className="section-heading"><div><p className="eyebrow">FINANCIAL WORKSPACE</p><h2 id="finance-title">Accounts, activity and plans</h2></div><button className="button button-quiet" onClick={() => refresh()}><RefreshCw size={15}/>Refresh</button></div>
+    {message && <p className="inline-alert" role="status">{message}</p>}
+    {summary && <div className="finance-summary"><div><small>Income this month</small><strong>{money.format(summary.incomeMinor / 100)}</strong></div><div><small>Spending, including fees</small><strong>{money.format(summary.spendingMinor / 100)}</strong></div><div><small>Transfers excluded</small><strong>{money.format(summary.transfersMinor / 100)}</strong></div><div><small>Net this month</small><strong>{money.format(summary.netMinor / 100)}</strong></div></div>}
+    <div className="finance-accounts">
+      {accounts.length === 0 && <p className="finance-note">Add a manual account or connect a supported bank. Bank availability and history depend on the institution.</p>}
+      {accounts.map(account => <article className="finance-account" key={account._id}>
+        <div><span className="eyebrow">{account.institution || account.type.replace('_', ' ')}</span><strong>{account.name}</strong><small>{account.connectionStatus === 'connected' ? `Connected · ${account.dataStatus || 'data available'}` : account.connectionStatus === 'pending' ? 'Waiting for provider data' : account.connectionStatus}</small>{account.provider && account.providerEnvironment !== 'unknown' && <small>{account.providerEnvironment === 'sandbox' ? 'Sandbox connection' : 'Live bank connection'}</small>}{reconciliation.find(x => x.accountId === account._id)?.differenceMinor !== null && reconciliation.find(x => x.accountId === account._id)?.differenceMinor !== undefined && <small>Provider balance difference: {money.format(reconciliation.find(x => x.accountId === account._id).differenceMinor / 100)}</small>}</div>
+        <strong>{money.format(account.balanceMinor / 100)}</strong>
+        {account.provider === 'mono' && account.active && <div className="finance-actions"><button className="text-action" onClick={() => syncAccount(account)} disabled={busy}>Sync now</button><button className="text-action" onClick={() => disconnectAccount(account)} disabled={busy}>Disconnect</button></div>}
+        {!account.provider && <div className="finance-actions"><button className="text-action" onClick={() => renameAccount(account)} disabled={busy}>Rename</button><button className="text-action" onClick={() => removeAccount(account)} disabled={busy}>Remove</button></div>}
+      </article>)}
+    </div>
+    {transferSuggestions.length > 0 && <div className="finance-reconcile"><h3>Review possible transfers between your accounts</h3><p className="finance-note">Only confirm pairs you recognize. Matching removes their income and expense classification and records one transfer.</p>{transferSuggestions.map(item => <div className="finance-transaction" key={`${item.debitId}-${item.creditId}`}><span><strong>{item.debitAccount} → {item.creditAccount}</strong><small>{item.description} · {localDate(item.date)} · {money.format(item.amountMinor / 100)}</small></span><button className="button button-quiet" disabled={busy} onClick={() => matchTransfer(item)}>Match as transfer</button></div>)}</div>}
+    <div className="finance-grid">
+      <form className="finance-form" onSubmit={addAccount}><h3>Add account</h3><label>Account name<input required maxLength="80" value={accountForm.name} onChange={e => setAccountForm({ ...accountForm, name: e.target.value })} placeholder="e.g. Main bank"/></label><div className="finance-fields"><label>Type<select value={accountForm.type} onChange={e => setAccountForm({ ...accountForm, type: e.target.value })}><option value="bank">Bank</option><option value="cash">Cash</option><option value="savings">Savings</option><option value="mobile_money">Mobile money</option></select></label><label>Opening balance (₦)<input type="number" min="0" step="0.01" value={accountForm.openingBalance} onChange={e => setAccountForm({ ...accountForm, openingBalance: e.target.value })}/></label></div><button className="button button-secondary" disabled={busy}>Add account</button></form>
+      <form className="finance-form" onSubmit={addTransaction}><h3>{editingTransactionId ? 'Edit activity' : 'Record activity'}</h3><div className="finance-fields"><label>Type<select value={transactionForm.type} onChange={e => setTransactionForm({ ...transactionForm, type: e.target.value })}><option value="expense">Expense</option><option value="income">Income</option><option value="fee">Bank fee</option><option value="refund">Refund</option></select></label><label>Account<select required value={transactionForm.accountId} onChange={e => setTransactionForm({ ...transactionForm, accountId: e.target.value })}>{accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}</select></label></div><div className="finance-fields"><label>Amount (₦)<input required type="number" min="0.01" step="0.01" value={transactionForm.amount} onChange={e => setTransactionForm({ ...transactionForm, amount: e.target.value })}/></label><label>Date<input required type="date" value={transactionForm.date} onChange={e => setTransactionForm({ ...transactionForm, date: e.target.value })}/></label></div><div className="finance-fields"><label>Description<input required maxLength="200" value={transactionForm.description} onChange={e => setTransactionForm({ ...transactionForm, description: e.target.value })}/></label><label>Category<input maxLength="50" value={transactionForm.category} onChange={e => setTransactionForm({ ...transactionForm, category: e.target.value })}/></label></div><button className="button button-secondary" disabled={busy || !accounts.length}>{editingTransactionId ? 'Save changes' : 'Save activity'}</button>{editingTransactionId && <button type="button" className="text-action" onClick={() => setEditingTransactionId(null)}>Cancel edit</button>}</form>
+      <form className="finance-form" onSubmit={addTransfer}><h3>{editingTransferId ? 'Edit transfer' : 'Record a transfer'}</h3><p className="finance-note">This records a transfer in your tracker. It does not send money.</p><div className="finance-fields"><label>From<select required value={transferForm.sourceAccountId} onChange={e => setTransferForm({ ...transferForm, sourceAccountId: e.target.value })}>{accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}</select></label><label>To<select required value={transferForm.destinationAccountId} onChange={e => setTransferForm({ ...transferForm, destinationAccountId: e.target.value })}>{accounts.filter(a => a._id !== transferForm.sourceAccountId).map(a => <option key={a._id} value={a._id}>{a.name}</option>)}</select></label></div><div className="finance-fields"><label>Amount (₦)<input required type="number" min="0.01" step="0.01" value={transferForm.amount} onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })}/></label><label>Fee (₦, optional)<input type="number" min="0" step="0.01" value={transferForm.fee} onChange={e => setTransferForm({ ...transferForm, fee: e.target.value })}/></label></div><div className="finance-fields"><label>Date<input required type="date" value={transferForm.date} onChange={e => setTransferForm({ ...transferForm, date: e.target.value })}/></label><label>Reference<input maxLength="120" value={transferForm.reference} onChange={e => setTransferForm({ ...transferForm, reference: e.target.value })}/></label></div><label>Description<input required value={transferForm.description} onChange={e => setTransferForm({ ...transferForm, description: e.target.value })}/></label><button className="button button-secondary" disabled={busy || accounts.length < 2}>{editingTransferId ? 'Save transfer changes' : 'Record transfer'}</button>{editingTransferId && <button type="button" className="text-action" onClick={() => setEditingTransferId(null)}>Cancel edit</button>}</form>
+      <div className="finance-form"><h3>Connect or import</h3><p className="finance-note">Connect with Mono's secure authorisation page. Your bank password and PIN are never entered here.</p><button className="button button-secondary" onClick={connectBank} disabled={busy}>Connect a bank with Mono</button><label className="finance-upload">Review a bank statement CSV<input type="file" accept=".csv,text/csv" onChange={previewImport}/></label>{importItems && <><p>{importItems.filter(x => !x.duplicate).length} rows ready to import</p><button className="button button-primary" onClick={commitImport} disabled={busy}>Import reviewed rows</button><button className="text-action" onClick={() => setImportItems(null)}>Cancel</button></>}</div>
+      <form className="finance-form" onSubmit={saveBudget}><h3>Monthly category budget</h3><div className="finance-fields"><label>Category<input required value={budgetForm.category} onChange={e => setBudgetForm({ ...budgetForm, category: e.target.value })}/></label><label>Month<input type="month" required value={budgetForm.month} onChange={e => setBudgetForm({ ...budgetForm, month: e.target.value })}/></label></div><label>Limit (₦)<input required type="number" min="0.01" step="0.01" value={budgetForm.amount} onChange={e => setBudgetForm({ ...budgetForm, amount: e.target.value })}/></label><button className="button button-secondary" disabled={busy}>Save budget</button>{budgets.map(b => <p key={b._id} className="finance-note">{b.category}: {money.format(b.spentMinor / 100)} of {money.format(b.amountMinor / 100)} spent</p>)}</form>
+      <form className="finance-form" onSubmit={saveRecurring}><h3>Recurring schedule</h3><div className="finance-fields"><label>Income or expense<select value={recurringForm.type} onChange={e => setRecurringForm({ ...recurringForm, type: e.target.value })}><option value="expense">Expense</option><option value="income">Income</option></select></label><label>Account<select required value={recurringForm.accountId} onChange={e => setRecurringForm({ ...recurringForm, accountId: e.target.value })}>{accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}</select></label></div><div className="finance-fields"><label>Amount (₦)<input required type="number" min="0.01" step="0.01" value={recurringForm.amount} onChange={e => setRecurringForm({ ...recurringForm, amount: e.target.value })}/></label><label>Frequency<select value={recurringForm.frequency} onChange={e => setRecurringForm({ ...recurringForm, frequency: e.target.value })}><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label></div><label>Description<input required value={recurringForm.description} onChange={e => setRecurringForm({ ...recurringForm, description: e.target.value })}/></label><div className="finance-fields"><label>Category<input value={recurringForm.category} onChange={e => setRecurringForm({ ...recurringForm, category: e.target.value })}/></label><label>Next date<input type="date" required value={recurringForm.nextDate} onChange={e => setRecurringForm({ ...recurringForm, nextDate: e.target.value })}/></label></div><button className="button button-secondary" disabled={busy || !accounts.length}>Save schedule</button>{recurring.filter(x => x.active).map(item => <div className="finance-transaction" key={item._id}><span><strong>{item.description} · {item.frequency}</strong><small>Next: {localDate(item.nextDate)} · {money.format(item.amountMinor / 100)}</small></span>{new Date(item.nextDate) <= new Date() ? <button type="button" className="text-action" onClick={() => postRecurring(item)} disabled={busy}>Record due</button> : <span className="soft-tag">Upcoming</span>}</div>)}</form>
+    </div>
+    <div className="finance-recent"><h3>Recent account activity</h3>{transactions.map(item => <div key={item._id} className="finance-transaction"><span><strong>{item.description}</strong><small>{item.type} · {localDate(item.date)} · {accounts.find(a => a._id === item.accountId)?.name || 'Account'}</small><span className="finance-actions">{item.source === 'manual' && item.type !== 'transfer' && <button className="text-action" onClick={() => editTransaction(item)}>Edit</button>}{item.source === 'manual' && item.type === 'transfer' && <button className="text-action" onClick={() => editTransfer(item)}>Edit</button>}{item.source === 'manual' && <button className="text-action" onClick={() => transactionAction(item, 'cancel')}>Cancel</button>}{item.status === 'posted' && <button className="text-action" onClick={() => transactionAction(item, 'reverse')}>Reverse</button>}</span><label className="receipt-upload">Attach receipt<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event => attachReceipt(event, item._id)}/></label></span><strong>{money.format(item.amountMinor / 100)}</strong></div>)}</div>
+  </section>;
 }
 
 function AuthLoading() {
