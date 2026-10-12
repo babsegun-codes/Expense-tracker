@@ -17,8 +17,25 @@ app.use(cors());
 app.get('/', (req, res) => res.json({ message: 'Expense Tracker API is running' }));
 app.get('/health', (req, res) => res.json({
   status: 'ok',
-  database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
 }));
+
+
+app.get('/ready', (req, res) => {
+  const databaseConnected = mongoose.connection.readyState === 1;
+
+  if (!databaseConnected) {
+    return res.status(503).json({
+      status: 'not ready',
+      database: 'disconnected'
+    });
+  }
+
+  return res.status(200).json({
+    status: 'ready',
+    database: 'connected'
+  });
+});
+
 app.post('/api/bank/webhook', express.raw({ type: 'application/json', limit: '256kb' }), bankWebhook);
 app.use(express.json({ limit: '3mb' }));
 app.use('/api/auth', authRoutes);
