@@ -59,7 +59,7 @@ jobs:
           tags: samakn/expense-tracker:backend-${{ steps.build-backend.outputs.sha }}
 
       - name: Scan backend image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: samakn/expense-tracker:backend-${{ steps.build-backend.outputs.sha }}
           format: table
@@ -117,7 +117,7 @@ jobs:
           tags: samakn/expense-tracker:frontend-${{ steps.build-frontend.outputs.sha }}
 
       - name: Scan frontend image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: samakn/expense-tracker:frontend-${{ steps.build-frontend.outputs.sha }}
           format: table
