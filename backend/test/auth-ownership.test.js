@@ -90,6 +90,38 @@ test('multi-user authentication and expense ownership', async t => {
     assert.equal(result.body.status, 'ok');
   });
 
+  await t.test('readiness succeeds when MongoDB is connected', async () => {
+    const originalState = mongoose.connection.readyState;
+
+    try {
+      mongoose.connection.readyState = 1;
+
+      const result = await request('/ready');
+
+      assert.equal(result.status, 200);
+      assert.equal(result.body.status, 'ready');
+      assert.equal(result.body.database, 'connected');
+    } finally {
+      mongoose.connection.readyState = originalState;
+    }
+  });
+
+  await t.test('readiness fails when MongoDB is disconnected', async () => {
+    const originalState = mongoose.connection.readyState;
+
+    try {
+      mongoose.connection.readyState = 0;
+
+      const result = await request('/ready');
+
+      assert.equal(result.status, 503);
+      assert.equal(result.body.status, 'not ready');
+      assert.equal(result.body.database, 'disconnected');
+    } finally {
+      mongoose.connection.readyState = originalState;
+    }
+  });
+
   let aliceToken;
   let aliceId;
   let expenseId;
