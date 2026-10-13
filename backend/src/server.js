@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const app = require('./app');
+const logger = require('./logger');
 
 async function start(options = {}) {
   const uri = options.uri || process.env.MONGODB_URI;
@@ -25,9 +26,9 @@ async function start(options = {}) {
 
 if (require.main === module) {
   start()
-    .then(() => console.log('Expense Tracker API is running.'))
+    .then(() => logger.info('Expense Tracker API is running.'))
     .catch(error => {
-      console.error(error.message);
+      logger.fatal({ err: error }, 'Expense Tracker API failed to start.');
       process.exitCode = 1;
     });
 }

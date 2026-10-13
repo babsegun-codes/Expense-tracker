@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const logger = require('../logger');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -42,7 +43,7 @@ router.post('/register', async (req, res) => {
     if (error.name === 'ValidationError') {
       return res.status(400).json({ message: 'Please check your email and password.' });
     }
-    console.error('Registration failed:', error.message);
+    logger.error({ err: error }, 'Registration failed.');
     return res.status(500).json({ message: 'Could not create your account. Please try again.' });
   }
 });
@@ -65,7 +66,7 @@ router.post('/login', async (req, res) => {
     if (!valid) return res.status(401).json({ message: 'Email or password is incorrect.' });
     return res.json({ token: issueToken(user), user: publicUser(user) });
   } catch (error) {
-    console.error('Login failed:', error.message);
+    logger.error({ err: error }, 'Login failed.');
     return res.status(500).json({ message: 'Could not sign in. Please try again.' });
   }
 });
@@ -106,7 +107,7 @@ router.post('/claim-legacy', authenticate, async (req, res) => {
     );
     return res.json({ claimed: result.modifiedCount });
   } catch (error) {
-    console.error('Legacy expense claim failed:', error.message);
+    logger.error({ err: error }, 'Legacy expense claim failed.');
     return res.status(500).json({ message: 'Could not claim legacy expenses. No records were intentionally deleted.' });
   }
 });

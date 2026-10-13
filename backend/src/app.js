@@ -1,4 +1,10 @@
 const express = require('express');
+const logger = require('./logger');
+const {
+  registry,
+  httpRequestsTotal,
+  httpRequestDurationSeconds
+} = require('./metrics');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const Expense = require('./models/Expense');
@@ -11,7 +17,47 @@ const bankWebhook = bankModule.webhook;
 const FinancialAccount = require('./models/FinancialAccount');
 const FinancialTransaction = require('./models/FinancialTransaction');
 
+
 const app = express();
+
+app.use((req, res, next) => {
+  const startTime = process.hrtime.bigint();
+
+  res.on('finish', () => {
+    if (req.path === '/metrics') return;
+
+    const route = req.route?.path
+      ? `${req.baseUrl || ''}${req.route.path}`
+      : req.path === '/metrics'
+        ? '/metrics'
+        : req.path === '/health' || req.path === '/ready' || req.path === '/'
+          ? req.path
+          : 'unmatched';
+
+    const labels = {
+      method: req.method,
+      route,
+      status_code: String(res.statusCode)
+    };
+
+    httpRequestsTotal.inc(labels);
+    httpRequestDurationSeconds.observe(
+      labels,
+      Number(process.hrtime.bigint() - startTime) / 1e9
+    );
+  });
+
+  next();
+});
+
+app.get('/metrics', async (req, res, next) => {
+  try {
+    res.set('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  } catch (error) {
+    next(error);
+  }
+});
 app.use(cors());
 
 app.get('/', (req, res) => res.json({ message: 'Expense Tracker API is running' }));
@@ -62,7 +108,7 @@ app.get('/api/expenses', authenticate, async (req, res) => {
     const expenses = await Expense.find({ userId: req.user.id }).sort({ date: -1, createdAt: -1 });
     return res.json(expenses);
   } catch (error) {
-    console.error('Expense fetch failed:', error.message);
+    logger.error({ err: error }, 'Expense fetch failed.');
     return res.status(500).json({ message: 'Failed to fetch expenses.' });
   }
 });
@@ -81,7 +127,7 @@ app.post('/api/expenses', authenticate, async (req, res) => {
     if (error.name === 'ValidationError' || error.name === 'CastError') {
       return res.status(400).json({ message: 'Please check the expense details and try again.' });
     }
-    console.error('Expense creation failed:', error.message);
+    logger.error({ err: error }, 'Expense creation failed.');
     return res.status(500).json({ message: 'Could not save the expense.' });
   }
 });
@@ -100,7 +146,7 @@ app.put('/api/expenses/:id', authenticate, async (req, res) => {
     if (error.name === 'ValidationError' || error.name === 'CastError') {
       return res.status(400).json({ message: 'Please check the expense details and try again.' });
     }
-    console.error('Expense update failed:', error.message);
+    logger.error({ err: error }, 'Expense update failed.');
     return res.status(500).json({ message: 'Could not update the expense.' });
   }
 });
@@ -113,7 +159,7 @@ app.delete('/api/expenses/:id', authenticate, async (req, res) => {
     return res.json({ message: 'Expense deleted successfully.' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(404).json({ message: 'Expense not found.' });
-    console.error('Expense deletion failed:', error.message);
+    logger.error({ err: error }, 'Expense deletion failed.');
     return res.status(500).json({ message: 'Could not delete the expense.' });
   }
 });
