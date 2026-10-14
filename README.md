@@ -1,326 +1,289 @@
-# Expense Tracker — DevOps Portfolio Project
+# Expense Tracker — DevOps Project
 
-A three-tier expense-tracking application built with React, Node.js/Express, and MongoDB. The project demonstrates Infrastructure as Code (IaC), containerisation, automated CI/CD, container image security scanning, Kubernetes orchestration on Amazon EKS, and application monitoring with Prometheus and Grafana.
+A containerised Expense Tracker application deployed on **Amazon EKS**, with automated CI/CD, infrastructure provisioning through Terraform, and centralised monitoring and logging using Prometheus, Grafana, Loki, and Grafana Alloy.
 
-**Live application:** https://expensetk.name.ng
-
-**Repository:** https://github.com/babsegun-codes/Expense-tracker
+The project demonstrates the implementation of a cloud-native application deployment workflow, from containerisation and infrastructure provisioning to automated deployments, monitoring, and log analysis.
 
 ## Project Overview
 
-The Expense Tracker provides a web interface for recording, managing, searching, and analysing expenses. The application uses a React frontend, an Express REST API, and MongoDB for data persistence. User registration and JWT-based authentication support account-specific expense management.
+The Expense Tracker is a three-tier application consisting of:
 
-The DevOps workflow builds separate frontend and backend Docker images, runs automated tests and security scans, publishes versioned images to Docker Hub, and deploys the application to Amazon EKS through GitHub Actions.
+- **Frontend:** React application.
+- **Backend:** Node.js and Express API.
+- **Database:** MongoDB.
 
-Terraform manages core AWS infrastructure, while Kubernetes manifests define application workloads and networking. Helm manages the Prometheus and Grafana monitoring components. Pino generates structured backend logs, and Prometheus collects application metrics for visualisation in Grafana.
+The application runs on Amazon EKS. AWS Application Load Balancer (ALB) provides external HTTPS access, while Kubernetes Services facilitate communication between application components.
 
-## Features
-
-* Create, edit, and delete expenses.
-* Search by title, category, or description.
-* Filter by category and month.
-* Display dashboard totals, monthly spending, transaction count, and average spending.
-* Register accounts and authenticate using JWTs.
-* Restrict expense access to the authenticated account.
-* Persist application data in MongoDB.
-* Validate REST API requests and expose health endpoints.
-* Provide a responsive frontend interface.
-* Collect HTTP request counts and duration metrics.
-* Visualise backend traffic, latency, and HTTP 5xx error rates in Grafana.
-
-## Technology Stack
-
-| Area                           | Technologies                              |
-| ------------------------------ | ----------------------------------------- |
-| Frontend                       | React, Vite, Nginx                        |
-| Backend                        | Node.js, Express, Pino                    |
-| Database                       | MongoDB                                   |
-| Containerisation               | Docker, Docker Compose                    |
-| Infrastructure as Code         | Terraform, Kubernetes manifests, Helm     |
-| CI/CD                          | GitHub Actions                            |
-| Container registry             | Docker Hub                                |
-| Security scanning              | Trivy                                     |
-| Orchestration                  | Kubernetes                                |
-| Cloud platform                 | AWS                                       |
-| Managed Kubernetes             | Amazon EKS                                |
-| Networking and ingress         | Amazon VPC, AWS Application Load Balancer |
-| TLS certificate                | AWS Certificate Manager                   |
-| Application metrics            | Prometheus                                |
-| Monitoring dashboards          | Grafana                                   |
-| Package and release management | Helm                                      |
+The monitoring stack collects application metrics and centralises container logs for inspection through Grafana.
 
 ## Architecture
 
-### Application architecture
+```mermaid
+flowchart TD
+    U[Users and Viewers]
+    GH[GitHub Repository]
+    GA[GitHub Actions CI/CD]
+    DH[Docker Hub]
+    AWS[AWS Cloud]
+    ALB[AWS Application Load Balancer]
+    EKS[Amazon EKS Cluster]
 
-Browser → React frontend served by Nginx → Express REST API → MongoDB
+    U --> ALB
+    GH --> GA
+    GA --> DH
+    GA --> EKS
+    ALB --> EKS
 
-### Deployment architecture
+    subgraph Application["Expense Tracker Namespace"]
+        FE[Frontend Deployment]
+        BE[Backend Deployment]
+        DB[MongoDB StatefulSet]
+        GP[Grafana Proxy Service]
 
-GitHub repository → GitHub Actions → Dependency installation and tests → Docker image builds → Trivy vulnerability scans → Docker Hub → Amazon EKS → Kubernetes Deployments and Services → AWS Application Load Balancer → Users
+        FE --> BE
+        BE --> DB
+        GP --> GF
+    end
 
-Terraform manages core AWS infrastructure, including networking and EKS-related resources. Kubernetes manifests define the application Deployments, Services, Ingress and autoscaling configuration. Helm deploys Prometheus and Grafana into the `monitoring` namespace.
+    subgraph Monitoring["Monitoring Namespace"]
+        PROM[Prometheus]
+        GF[Grafana]
+        ALLOY[Grafana Alloy]
+        LOKI[Loki]
+        ALLOY --> LOKI
+        PROM --> GF
+        LOKI --> GF
+    end
 
-### Monitoring architecture
+    EKS --> Application
+    EKS --> Monitoring
+    BE --> PROM
+    FE --> ALLOY
+    BE --> ALLOY
+    DB --> ALLOY
+```
 
-Express backend → `/metrics` endpoint → Prometheus scraping → Grafana data source → Expense Tracker Monitoring dashboard
+## Technology Stack
 
-Pino generates structured JSON logs from the backend. Prometheus collects application and Node.js runtime metrics, while Grafana queries Prometheus to visualise selected performance indicators.
+| Category | Technology |
+|---|---|
+| Frontend | React |
+| Backend | Node.js, Express |
+| Database | MongoDB |
+| Containers | Docker |
+| Container orchestration | Kubernetes |
+| Cloud platform | AWS |
+| Managed Kubernetes | Amazon EKS |
+| Load balancing | AWS Application Load Balancer |
+| Infrastructure as Code | Terraform |
+| CI/CD | GitHub Actions |
+| Container registry | Docker Hub |
+| Vulnerability scanning | Trivy |
+| Metrics monitoring | Prometheus |
+| Monitoring dashboards | Grafana |
+| Log aggregation | Loki |
+| Log collection | Grafana Alloy |
+| Version control | Git and GitHub |
 
-The application runs in the `expense-tracker` Kubernetes namespace. Monitoring components run separately in the `monitoring` namespace.
+## AWS Infrastructure
 
-## Infrastructure as Code
+The project uses AWS infrastructure to host and expose the application.
 
-The project uses Terraform, Kubernetes manifests and Helm to manage infrastructure and application configuration.
+Key components include:
 
-### Terraform
+- Amazon EKS for Kubernetes orchestration.
+- An AWS VPC with public and private networking components.
+- Kubernetes worker nodes running application and monitoring workloads.
+- AWS Application Load Balancer for external application access.
+- AWS Certificate Manager for HTTPS.
+- Amazon S3 for Terraform remote state storage.
 
-Terraform provisions core AWS infrastructure for the EKS deployment, including VPC networking, subnets, routing, IAM roles and EKS-related resources.
+The infrastructure is provisioned and managed using Terraform.
 
-Infrastructure configuration is maintained in version-controlled Terraform files. The project uses an S3 backend for Terraform state.
+## Application Deployment
 
-### Kubernetes manifests
+The application runs in the `expense-tracker` Kubernetes namespace.
 
-Kubernetes manifests define application Deployments, Services, Ingress, the backend Horizontal Pod Autoscaler, database resources and related runtime settings.
+| Component | Kubernetes resource or service |
+|---|---|
+| Frontend | Frontend Deployment |
+| Backend API | Backend Deployment |
+| Database | MongoDB StatefulSet |
+| Frontend access | `expense-frontend-service` |
+| Backend access | `backend-service` |
+| Grafana proxy | `grafana-proxy-service` |
 
-### Helm
+The application currently uses three frontend replicas and three backend replicas, with a single MongoDB StatefulSet replica.
 
-Helm manages the Prometheus and Grafana releases in the `monitoring` namespace. Custom values configure the backend scrape target and persistent storage for both monitoring services.
+The backend exposes health-check and monitoring endpoints:
+
+- `/health` — application health check.
+- `/ready` — readiness check.
+- `/metrics` — Prometheus metrics.
 
 ## CI/CD Pipeline
 
-The GitHub Actions workflow is defined in `.github/workflows/ci-cd.yaml`.
+GitHub Actions automates the application build, security scanning, image publishing, and deployment process.
 
-The pipeline runs on pushes to `main` and pull requests targeting `main`.
+The pipeline includes:
 
-### 1. Dependency installation and testing
+1. Triggering workflows for pushes and pull requests targeting the `main` branch.
+2. Installing application dependencies and running configured tests or build checks.
+3. Building frontend and backend Docker images.
+4. Scanning images for HIGH and CRITICAL vulnerabilities using Trivy.
+5. Publishing versioned images to Docker Hub when changes are pushed to `main`.
+6. Configuring access to the Amazon EKS cluster.
+7. Updating Kubernetes deployment images and applying the relevant application manifests.
+8. Waiting for frontend and backend rollouts to complete.
 
-The backend job installs dependencies with `npm ci` and executes `npm test`. The frontend job installs dependencies and creates a production build.
+AWS and Docker Hub credentials are configured through GitHub Actions secrets rather than hard-coded into workflow files.
 
-### 2. Docker image builds
+## Infrastructure as Code with Terraform
 
-The pipeline builds separate frontend and backend Docker images using Docker Buildx.
+Terraform manages the AWS infrastructure required by the project.
 
-Each image receives a tag based on the first seven characters of the Git commit SHA, allowing image versions to be associated with source-code revisions.
+Infrastructure configuration covers:
 
-### 3. Security scanning with Trivy
+- VPC and subnet resources.
+- Internet Gateway and NAT-related networking.
+- Route tables.
+- EKS cluster and worker-node IAM roles.
+- Amazon EKS cluster.
+- Managed node group.
+- Terraform state stored remotely in Amazon S3.
 
-Trivy scans the frontend and backend images for operating-system and library vulnerabilities rated HIGH or CRITICAL.
+Terraform helps make infrastructure provisioning more consistent, reproducible, and maintainable.
 
-The pipeline is configured to fail when matching vulnerabilities are detected. Unfixed vulnerabilities are excluded according to the workflow's configured policy.
+## Monitoring and Observability
 
-During development, the frontend image failed security scanning because of vulnerable Alpine Linux packages. The production Dockerfile was updated to upgrade Alpine packages, and a subsequent local Trivy scan reported zero HIGH or CRITICAL vulnerabilities.
+The project includes a monitoring and logging stack deployed on Kubernetes.
 
-### 4. Image publishing
+### Prometheus
 
-On pushes to `main`, the pipeline authenticates with Docker Hub and publishes the versioned frontend and backend images.
+Prometheus collects application metrics, including HTTP request metrics exposed by the backend API. The metrics support monitoring of request volume, request rate, response latency, and HTTP 5xx errors.
 
-Pull requests build and scan the images without publishing them.
+### Grafana
 
-### 5. Deployment to Amazon EKS
+Grafana provides dashboards for application metrics and logs.
 
-After both image jobs succeed, the deployment job:
+**Grafana URL:**  
+https://expensetk.name.ng/grafana/
 
-* Configures AWS credentials.
-* Updates the local Kubernetes configuration for the `expense-tracker` EKS cluster in `us-east-1`.
-* Updates the frontend and backend manifests with the new image tags.
-* Applies the application Deployments, Services, Ingress and backend Horizontal Pod Autoscaler.
-* Waits for the backend and frontend rollouts to complete.
+The Grafana interface is available through the application's HTTPS domain using the `/grafana/` path.
 
-## Kubernetes Configuration
+### Loki
 
-The application uses Kubernetes resources to manage its runtime environment.
+Loki aggregates application container logs and makes the logs searchable through Grafana.
 
-### Frontend and backend
+The Loki deployment uses persistent storage and a configured retention period of **7 days**. Loki is accessed internally by the monitoring stack rather than exposed as a separate public endpoint.
 
-* Frontend Deployment: three desired replicas, serving HTTP on port 80.
-* Backend Deployment: three desired replicas, serving the API on port 4500.
-* Startup, liveness and readiness probes check application startup and health.
-* CPU and memory requests and limits are defined for both application Deployments.
-* Kubernetes Services route internal traffic to the corresponding pods.
+### Grafana Alloy
 
-### Networking and ingress
+Grafana Alloy discovers and collects Kubernetes pod logs from the `expense-tracker` namespace and forwards the logs to Loki.
 
-The frontend and backend use internal ClusterIP Services. An internet-facing AWS Application Load Balancer routes requests for `expensetk.name.ng`:
+This configuration centralises logs from the application components without requiring manual access to individual pods.
 
-* `/` routes to the frontend Service.
-* `/api` routes to the backend Service.
+### Monitoring dashboards
 
-The Ingress is configured to use an AWS Certificate Manager certificate and redirect HTTP traffic to HTTPS.
+The project includes the following Grafana dashboards and panels:
 
-### Autoscaling
+**Expense Tracker Monitoring**
+- Total HTTP requests.
+- HTTP request rate.
+- Average request latency.
+- HTTP 5xx error rate.
 
-The backend Horizontal Pod Autoscaler is configured with:
+**Expense Tracker – Application Logs**
+- General application logs.
+- Backend logs.
+- Frontend logs.
+- MongoDB logs.
 
-* Minimum replicas: 3.
-* Maximum replicas: 6.
-* Target average CPU utilisation: 70%.
+These dashboards provide visibility into application behaviour, errors, and operational activity.
 
-Scaling depends on the availability of Kubernetes metrics and the cluster's ability to schedule additional pods.
+## Third-Party Grafana Viewer Access
 
-### Database and persistence
+A read-only Grafana account is available for tutors, reviewers, and other authorised viewers who need to inspect the project's monitoring dashboards and application logs.
 
-MongoDB runs as a single-replica StatefulSet using the `mongo:7` image. A volume claim template requests 1 GiB of persistent storage using the `gp2` StorageClass and `ReadWriteOnce` access mode.
+**Access details**
 
-Kubernetes Secrets supply database credentials and the backend connection string.
+- **Grafana URL:** https://expensetk.name.ng/grafana/
+- **Username:** `Guest`
+- **Password:** Shared privately with authorised viewers.
 
-The current manifests do not establish a replicated MongoDB cluster or document a tested automated database backup and recovery strategy.
+The Viewer account is intended for inspection of dashboards and logs rather than administrative changes to Grafana configuration.
 
-## Observability and Monitoring
+For security, credentials should be distributed privately and should not be committed to a public GitHub repository. Access to application logs should be reviewed periodically to ensure that sensitive information is not exposed.
 
-The project uses Pino, Prometheus and Grafana to monitor backend application behaviour.
+## Security Practices
 
-### Structured logging with Pino
+The project incorporates several security and operational practices:
 
-The backend uses Pino to generate structured JSON logs. The logger records application events, startup messages and errors. Configured redaction rules help prevent sensitive values, including passwords, authentication headers, cookies and tokens, from appearing in logs.
+- HTTPS access through AWS Certificate Manager and the Application Load Balancer.
+- Container image vulnerability scanning with Trivy.
+- GitHub Actions secrets for deployment credentials.
+- Kubernetes Services for internal communication between application components.
+- A separate monitoring namespace.
+- Internal access to Loki rather than a publicly exposed Loki endpoint.
+- A read-only Grafana Viewer account for third-party inspection.
+- Structured backend logging with configured redaction.
 
-The application writes logs to standard output, allowing Kubernetes to capture container logs.
+These measures provide a foundation for improving application security and operational visibility.
 
-Centralised log aggregation and long-term log searching have not yet been configured.
+## Repository Structure
 
-### Prometheus metrics
-
-The backend exposes application metrics through the `/metrics` endpoint. Prometheus scrapes the internal backend Service every 15 seconds.
-
-The exported metrics include:
-
-* `http_requests_total`: cumulative HTTP request counts grouped by method, route and status code.
-* `http_request_duration_seconds`: request-duration histogram, including count, sum and bucket metrics.
-* Node.js runtime and process metrics collected by the Prometheus client library.
-
-The application also exposes `/health` for basic health checks and `/ready` for readiness checks that account for MongoDB connectivity.
-
-The `/metrics` endpoint is intended for internal monitoring rather than public access.
-
-### Grafana dashboards
-
-Grafana uses Prometheus as its data source. The `Expense Tracker Monitoring` dashboard contains four panels.
-
-| Panel               | Purpose                                                                    |
-| ------------------- | -------------------------------------------------------------------------- |
-| Total HTTP requests | Displays the cumulative number of recorded requests.                       |
-| Request rate        | Shows HTTP requests per second over a rolling five-minute window.          |
-| Average latency     | Estimates average HTTP request duration over a rolling five-minute window. |
-| HTTP 5xx error rate | Shows the rate of server-side HTTP errors.                                 |
-
-The dashboard provides an overview of backend traffic, response performance and HTTP server errors. The metrics support troubleshooting but do not, by themselves, establish application availability or user activity.
-
-### Monitoring storage
-
-Prometheus uses an 8 GiB persistent volume, while Grafana uses a 5 GiB persistent volume. Both use the `gp2` StorageClass.
-
-Persistent volumes retain stored data across ordinary pod replacement, subject to the storage and recovery configuration. Persistent storage does not replace backups.
-
-### Current monitoring limitations
-
-Automated alert rules and notification delivery have not yet been configured. Kubernetes resource dashboards for CPU, memory and pod restarts also remain potential improvements. Centralised log aggregation is not implemented.
-
-## Local Development with Docker Compose
-
-From the repository root, start the local application:
-
-```bash
-docker compose up --build -d
+```text
+Expense-tracker/
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yaml
+├── Kubernetes/
+│   ├── backend-deployment.yaml
+│   ├── frontend-deployment.yaml
+│   ├── expense-ingress.yaml
+│   ├── backend-hpa.yaml
+│   └── monitoring/
+│       ├── alloy-values.yaml
+│       ├── loki-values.yaml
+│       └── grafana-proxy.yaml
+├── Terraform/
+├── backend/
+├── frontend/
+├── docker-compose.yml
+└── README.md
 ```
 
-Check the running services and backend logs:
+*The structure above describes the main project components; additional files may exist in the repository.*
 
-```bash
-docker compose ps
-docker compose logs backend
-```
+## Learning Outcomes
 
-Local application endpoints:
+This project demonstrates practical experience with:
 
-* Frontend: http://localhost:801
-* Backend API: http://localhost:4600
-* Backend health: http://localhost:4600/health
-
-MongoDB is intended to remain accessible only inside the Docker network.
-
-To stop the services:
-
-```bash
-docker compose down
-```
-
-## Local Development Without Docker Compose
-
-### Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-Configure the required environment variables locally before starting the backend.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-For local frontend development, Vite uses `http://localhost:4600/api` by default.
-
-## API Endpoints
-
-| Method | Endpoint                 | Purpose                                                      |
-| ------ | ------------------------ | ------------------------------------------------------------ |
-| POST   | `/api/auth/register`     | Register an account                                          |
-| POST   | `/api/auth/login`        | Authenticate and receive a JWT                               |
-| GET    | `/api/auth/me`           | Retrieve the authenticated user                              |
-| POST   | `/api/auth/claim-legacy` | Claim eligible unassigned legacy expenses                    |
-| GET    | `/api/expenses`          | List the authenticated user's expenses                       |
-| POST   | `/api/expenses`          | Create an expense                                            |
-| PUT    | `/api/expenses/:id`      | Update an owned expense                                      |
-| DELETE | `/api/expenses/:id`      | Delete an owned expense                                      |
-| GET    | `/health`                | Check basic API health                                       |
-| GET    | `/ready`                 | Check application readiness, including database connectivity |
-| GET    | `/metrics`               | Expose Prometheus metrics                                    |
-
-Protected endpoints require a valid Bearer token. Expense records are restricted to the authenticated account.
-
-## Security Considerations
-
-* Trivy scans container images for HIGH and CRITICAL vulnerabilities according to the workflow policy.
-* The pipeline uses GitHub Actions secrets for Docker Hub and AWS credentials.
-* JWT authentication protects account-specific expense endpoints.
-* Kubernetes Secrets supply MongoDB connection settings to the backend.
-* Pino redacts configured sensitive fields from structured logs.
-* The Prometheus and Grafana interfaces are accessed through internal Kubernetes Services and local port-forwarding rather than public ingress.
-* Production credentials and application secrets must not be committed to source control.
-* Database backups, secret rotation, disaster recovery and deployment rollback procedures require further attention before treating the deployment as production-hardened.
-
-## Lessons Learned
-
-This project provided practical experience with:
-
-* Building and packaging a multi-tier web application.
-* Creating Docker images for frontend and backend services.
-* Automating dependency installation, testing, image builds and deployments with GitHub Actions.
-* Investigating and resolving container image vulnerabilities.
-* Versioning images with Git commit identifiers.
-* Managing AWS infrastructure with Terraform.
-* Deploying Kubernetes resources to Amazon EKS.
-* Configuring Services, Ingress routing, health probes, resource requests and autoscaling.
-* Collecting application metrics with Prometheus.
-* Building Grafana dashboards for request traffic, latency and HTTP errors.
-* Implementing structured logging with Pino.
-* Troubleshooting Helm releases, Kubernetes pods and persistent volume claims.
+- Containerising a multi-tier application using Docker.
+- Deploying workloads to Kubernetes.
+- Provisioning AWS infrastructure with Terraform.
+- Building automated CI/CD pipelines with GitHub Actions.
+- Publishing and scanning Docker images.
+- Deploying applications to Amazon EKS.
+- Configuring external application access with an AWS Application Load Balancer.
+- Monitoring application metrics with Prometheus and Grafana.
+- Collecting and searching Kubernetes application logs with Loki and Grafana Alloy.
+- Providing read-only dashboard access for external reviewers.
 
 ## Future Improvements
 
-* Implement and test automated database backups and recovery.
-* Improve secrets management and consider GitHub Actions OIDC for AWS authentication.
-* Configure alert rules and notification delivery for backend errors and service availability.
-* Add Kubernetes resource dashboards for CPU, memory, pod restarts and capacity.
-* Introduce centralised log aggregation and search.
-* Review deployment rollback procedures and post-deployment smoke tests.
-* Improve database resilience and verify replica distribution across availability zones.
-* Strengthen automated integration tests and infrastructure validation.
-* Review Helm chart maintenance and update deprecated chart dependencies.
+Potential improvements include:
+
+- Multi-user authentication and role-based access within the application.
+- Automated integration and end-to-end testing.
+- Stronger secrets management.
+- Improved log-based alerting and notification channels.
+- More comprehensive monitoring of database performance and application errors.
+- Automated deployment verification and rollback procedures.
+- Persistent MongoDB backup and recovery procedures.
+
+## Conclusion
+
+The Expense Tracker project combines application development, cloud infrastructure, container orchestration, CI/CD, monitoring, and centralised logging in a practical DevOps implementation.
+
+The project provides a foundation for further improvements in automation, reliability, security, and observability.
