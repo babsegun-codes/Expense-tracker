@@ -1,0 +1,60 @@
+controller:
+  type: deployment
+  replicas: 1
+
+rbac:
+  create: true
+  namespaces:
+    - expense-tracker
+
+alloy:
+  configMap:
+    create: true
+    content: |-
+      logging {
+        level = "info"
+      }
+
+      discovery.kubernetes "expense_tracker_pods" {
+        role = "pod"
+
+        namespaces {
+          names = ["expense-tracker"]
+        }
+      }
+
+      discovery.relabel "expense_tracker_pods" {
+        targets = discovery.kubernetes.expense_tracker_pods.targets
+
+        rule {
+          action        = "keep"
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "expense-tracker"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+
+      loki.source.kubernetes "expense_tracker_pods" {
+        targets    = discovery.relabel.expense_tracker_pods.output
+        forward_to = [loki.write.local.receiver]
+      }
+
+      loki.write "local" {
+        endpoint {
+          url = "http://expense-tracker-loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+        }
+      }

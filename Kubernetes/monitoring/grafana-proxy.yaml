@@ -1,0 +1,60 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-proxy
+  namespace: expense-tracker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-proxy
+  template:
+    metadata:
+      labels:
+        app: grafana-proxy
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.28-alpine
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: grafana-proxy-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-proxy-config
+  namespace: expense-tracker
+data:
+  default.conf: |
+    server {
+      listen 8080;
+
+      location / {
+        proxy_pass http://expense-tracker-grafana.monitoring.svc.cluster.local:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-proxy-service
+  namespace: expense-tracker
+spec:
+  selector:
+    app: grafana-proxy
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
