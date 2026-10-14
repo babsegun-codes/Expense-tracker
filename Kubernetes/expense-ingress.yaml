@@ -1,3 +1,4 @@
+
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -15,6 +16,13 @@ spec:
     - host: expensetk.name.ng
       http:
         paths:
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-proxy-service
+                port:
+                  number: 8080
           - path: /api
             pathType: Prefix
             backend:
