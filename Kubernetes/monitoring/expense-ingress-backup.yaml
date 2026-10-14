@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:133789123792:certificate/4c07a8c9-97db-43c5-83c6-d5d53c9ffb02
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/target-type: ip
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"alb.ingress.kubernetes.io/certificate-arn":"arn:aws:acm:us-east-1:133789123792:certificate/4c07a8c9-97db-43c5-83c6-d5d53c9ffb02","alb.ingress.kubernetes.io/listen-ports":"[{\"HTTP\":80},{\"HTTPS\":443}]","alb.ingress.kubernetes.io/scheme":"internet-facing","alb.ingress.kubernetes.io/ssl-redirect":"443","alb.ingress.kubernetes.io/target-type":"ip"},"name":"expense-ingress","namespace":"expense-tracker"},"spec":{"ingressClassName":"alb","rules":[{"host":"expensetk.name.ng","http":{"paths":[{"backend":{"service":{"name":"backend-service","port":{"number":4500}}},"path":"/api","pathType":"Prefix"},{"backend":{"service":{"name":"expense-frontend-service","port":{"number":80}}},"path":"/","pathType":"Prefix"}]}}]}}
+  creationTimestamp: "2026-10-07T21:25:53Z"
+  finalizers:
+  - ingress.k8s.aws/resources
+  generation: 3
+  name: expense-ingress
+  namespace: expense-tracker
+  resourceVersion: "723565"
+  uid: ee3d0071-bfd5-493c-be13-116eab640c30
+spec:
+  ingressClassName: alb
+  rules:
+  - host: expensetk.name.ng
+    http:
+      paths:
+      - backend:
+          service:
+            name: backend-service
+            port:
+              number: 4500
+        path: /api
+        pathType: Prefix
+      - backend:
+          service:
+            name: expense-frontend-service
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+status:
+  loadBalancer:
+    ingress:
+    - hostname: k8s-expenset-expensei-13b035839c-754574312.us-east-1.elb.amazonaws.com
+      ports:
+      - port: 80
+        protocol: ""
+      - port: 443
+        protocol: ""
